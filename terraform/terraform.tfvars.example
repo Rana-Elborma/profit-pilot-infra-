@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars — it is listed in .gitignore.
+
+# Your GCP project ID (found in the GCP Console dashboard)
+project_id = "swe422-project"
+
+# GCP region for all resources (Cloud Run, Cloud SQL, Artifact Registry, VPC)
+region = "us-central1"
+
+# NOTE: The database password and JWT secret are generated automatically by
+# Terraform's random_password resource. You do not set them here — they are
+# stored in Secret Manager and readable via:
+#   terraform output database_url
