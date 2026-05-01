@@ -66,14 +66,16 @@ resource "google_sql_database_instance" "db" {
 # ── Database ──────────────────────────────────────────────────────────────────
 
 resource "google_sql_database" "database" {
-  name     = "profitpilot"
-  instance = google_sql_database_instance.db.name
+  name            = "profitpilot"
+  instance        = google_sql_database_instance.db.name
+  deletion_policy = "ABANDON"
 }
 
 # ── Database user ─────────────────────────────────────────────────────────────
 
 resource "google_sql_user" "postgres" {
-  name     = "postgres"
-  instance = google_sql_database_instance.db.name
-  password = random_password.db_password.result
+  name            = "postgres"
+  instance        = google_sql_database_instance.db.name
+  password        = random_password.db_password.result
+  deletion_policy = "ABANDON"
 }
