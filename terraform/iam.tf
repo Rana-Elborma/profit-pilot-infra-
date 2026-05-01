@@ -65,16 +65,23 @@ resource "google_project_iam_member" "cloud_run_secret_accessor" {
 # ── Workload Identity Federation — keyless GitHub Actions auth ───────────────
 # SA key creation is blocked by org policy. WIF lets GitHub Actions authenticate
 # directly via OIDC — no key file stored anywhere.
+#
+# GCP soft-deletes pool IDs for 30 days after destroy — the same name cannot be
+# reused. A short random suffix ensures each restore cycle gets a unique ID.
+
+resource "random_id" "wif_suffix" {
+  byte_length = 3
+}
 
 resource "google_iam_workload_identity_pool" "github_pool" {
-  workload_identity_pool_id = "profit-pilot-github-pool"
+  workload_identity_pool_id = "pp-github-${random_id.wif_suffix.hex}"
   display_name              = "GitHub Actions Pool"
   depends_on                = [google_project_service.iamcredentials]
 }
 
 resource "google_iam_workload_identity_pool_provider" "github_provider" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.github_pool.workload_identity_pool_id
-  workload_identity_pool_provider_id = "profit-pilot-github-provider"
+  workload_identity_pool_provider_id = "pp-github-provider-${random_id.wif_suffix.hex}"
   display_name                       = "GitHub Actions Provider"
 
   attribute_mapping = {
