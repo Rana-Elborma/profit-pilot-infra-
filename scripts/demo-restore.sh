@@ -12,19 +12,20 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TERRAFORM_DIR="$REPO_ROOT/terraform"
+SERVICES_REPO="Rana-Elborma/profit-pilot-services"
 
 echo "========================================"
 echo "  PROFIT PILOT — RESTORE"
 echo "========================================"
 echo ""
-echo "Step 1/4 — Provisioning infrastructure (Cloud SQL takes ~10 min)..."
+echo "Step 1/5 — Provisioning infrastructure (Cloud SQL takes ~10 min)..."
 echo ""
 
 cd "$TERRAFORM_DIR"
 terraform apply -auto-approve
 
 echo ""
-echo "Step 2/4 — Reading outputs..."
+echo "Step 2/5 — Reading outputs..."
 
 PROJECT_ID=$(terraform output -raw gcp_project_id)
 REGION=$(terraform output -raw gcp_region)
@@ -43,48 +44,80 @@ echo "  wif_provider:      $WIF_PROVIDER"
 echo "  service_account:   $WIF_SA"
 
 echo ""
-echo "Step 3/4 — Updating GitHub Secrets..."
+echo "Step 3/5 — Updating GitHub Secrets on $SERVICES_REPO ..."
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
-  cd "$REPO_ROOT"
-  GITHUB_REPO=$(git remote get-url origin | sed 's/.*github.com[:/]//' | sed 's/\.git$//')
-
-  gh secret set GCP_PROJECT_ID        --body "$PROJECT_ID"   --repo "$GITHUB_REPO"
-  gh secret set GCP_REGION            --body "$REGION"       --repo "$GITHUB_REPO"
-  gh secret set WIF_PROVIDER          --body "$WIF_PROVIDER" --repo "$GITHUB_REPO"
-  gh secret set WIF_SERVICE_ACCOUNT   --body "$WIF_SA"       --repo "$GITHUB_REPO"
-  gh secret set ARTIFACT_REGISTRY_URL --body "$REGISTRY"     --repo "$GITHUB_REPO"
-
-  echo "  GitHub secrets updated automatically."
+  gh secret set GCP_PROJECT_ID        --body "$PROJECT_ID"   --repo "$SERVICES_REPO"
+  gh secret set GCP_REGION            --body "$REGION"       --repo "$SERVICES_REPO"
+  gh secret set WIF_PROVIDER          --body "$WIF_PROVIDER" --repo "$SERVICES_REPO"
+  gh secret set WIF_SERVICE_ACCOUNT   --body "$WIF_SA"       --repo "$SERVICES_REPO"
+  gh secret set ARTIFACT_REGISTRY     --body "$REGISTRY"     --repo "$SERVICES_REPO"
+  echo "  GitHub secrets updated on $SERVICES_REPO"
 else
   echo "  gh CLI not found or not authenticated — update these secrets manually:"
   echo ""
-  echo "  GCP_PROJECT_ID        = $PROJECT_ID"
-  echo "  GCP_REGION            = $REGION"
-  echo "  WIF_PROVIDER          = $WIF_PROVIDER"
-  echo "  WIF_SERVICE_ACCOUNT   = $WIF_SA"
-  echo "  ARTIFACT_REGISTRY_URL = $REGISTRY"
+  echo "  Repo: github.com/$SERVICES_REPO"
+  echo "  Settings → Secrets and variables → Actions → update each one:"
   echo ""
-  echo "  Settings → Secrets and variables → Actions → update each one above."
+  echo "  GCP_PROJECT_ID      = $PROJECT_ID"
+  echo "  GCP_REGION          = $REGION"
+  echo "  WIF_PROVIDER        = $WIF_PROVIDER"
+  echo "  WIF_SERVICE_ACCOUNT = $WIF_SA"
+  echo "  ARTIFACT_REGISTRY   = $REGISTRY"
+  echo ""
   echo "  Press Enter when done..."
   read -r
 fi
 
 echo ""
-echo "Step 4/4 — Triggering CI/CD (builds and deploys both Docker images)..."
-cd "$REPO_ROOT"
-git commit --allow-empty -m "chore: restore — trigger CI/CD after infra rebuild"
-git push origin main
+echo "Step 4/5 — Deploying application images via CI/CD..."
+
+if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+  gh workflow run "Deploy core-api"      --repo "$SERVICES_REPO" --ref main
+  gh workflow run "Deploy analytics-api" --repo "$SERVICES_REPO" --ref main
+  echo "  Workflows triggered — waiting for both to complete..."
+
+  # Poll until both workflows finish
+  sleep 15
+  for workflow in "Deploy core-api" "Deploy analytics-api"; do
+    echo "  Waiting for: $workflow"
+    while true; do
+      STATUS=$(gh run list --workflow="$workflow" --repo "$SERVICES_REPO" --limit 1 --json status,conclusion \
+               --jq '.[0] | if .status == "completed" then .conclusion else .status end')
+      if [[ "$STATUS" == "success" ]]; then
+        echo "  ✓ $workflow — success"
+        break
+      elif [[ "$STATUS" == "failure" || "$STATUS" == "cancelled" ]]; then
+        echo "  ✗ $workflow — $STATUS"
+        echo "    Check: https://github.com/$SERVICES_REPO/actions"
+        exit 1
+      fi
+      sleep 10
+    done
+  done
+else
+  echo "  gh CLI not available — trigger CI/CD manually:"
+  echo "    https://github.com/$SERVICES_REPO/actions"
+  echo "  Press Enter once both workflows are green..."
+  read -r
+fi
+
+echo ""
+echo "Step 5/5 — Running database migrations..."
+gcloud run jobs execute run-migrations \
+  --region "$REGION" \
+  --wait
+echo "  Migrations complete."
 
 echo ""
 echo "========================================"
 echo "  RESTORE COMPLETE"
 echo "========================================"
 echo ""
-echo "  Watch the deployment:"
-echo "  https://github.com/$GITHUB_REPO/actions"
+echo "  core-api:      $CORE_URL"
+echo "  analytics-api: $ANALYTICS_URL"
 echo ""
-echo "  Once CI/CD finishes (3-5 min), verify:"
-echo "  curl $CORE_URL/health"
-echo "  curl $ANALYTICS_URL/health"
+echo "  Verify:"
+echo "  curl $CORE_URL/docs"
+echo "  curl $ANALYTICS_URL/docs"
 echo ""
