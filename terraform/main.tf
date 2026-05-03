@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.9"
+    }
   }
 
   backend "gcs" {
@@ -42,12 +46,6 @@ resource "google_project_service" "run" {
   depends_on         = [google_project_service.cloudresourcemanager]
 }
 
-resource "google_project_service" "sqladmin" {
-  service            = "sqladmin.googleapis.com"
-  disable_on_destroy = false
-  depends_on         = [google_project_service.cloudresourcemanager]
-}
-
 resource "google_project_service" "artifactregistry" {
   service            = "artifactregistry.googleapis.com"
   disable_on_destroy = false
@@ -56,12 +54,6 @@ resource "google_project_service" "artifactregistry" {
 
 resource "google_project_service" "secretmanager" {
   service            = "secretmanager.googleapis.com"
-  disable_on_destroy = false
-  depends_on         = [google_project_service.cloudresourcemanager]
-}
-
-resource "google_project_service" "vpcaccess" {
-  service            = "vpcaccess.googleapis.com"
   disable_on_destroy = false
   depends_on         = [google_project_service.cloudresourcemanager]
 }

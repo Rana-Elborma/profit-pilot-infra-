@@ -32,9 +32,9 @@ resource "google_project_iam_member" "secret_accessor" {
   member  = "serviceAccount:${google_service_account.profit_pilot_sa.email}"
 }
 
-resource "google_project_iam_member" "cloudsql_client" {
+resource "google_project_iam_member" "firestore_user" {
   project = var.project_id
-  role    = "roles/cloudsql.client"
+  role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.profit_pilot_sa.email}"
 }
 
@@ -60,6 +60,21 @@ resource "google_project_iam_member" "cloud_run_secret_accessor" {
   member  = "serviceAccount:service-${data.google_project.project.number}@serverless-robot-prod.iam.gserviceaccount.com"
 
   depends_on = [google_project_service.run]
+}
+
+# ── IAM propagation buffer ────────────────────────────────────────────────────
+# GCP IAM bindings take ~20-30s to propagate globally after the API confirms
+# creation. Cloud Run fails to mount secrets if it starts before propagation
+# completes. This sleep ensures Cloud Run resources never start too early.
+
+resource "time_sleep" "iam_propagation" {
+  create_duration = "30s"
+
+  depends_on = [
+    google_project_iam_member.secret_accessor,
+    google_project_iam_member.cloud_run_secret_accessor,
+    google_project_iam_member.firestore_user,
+  ]
 }
 
 # ── Workload Identity Federation — keyless GitHub Actions auth ───────────────

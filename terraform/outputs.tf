@@ -23,12 +23,6 @@ output "analytics_api_url" {
   value       = google_cloud_run_v2_service.analytics_api.uri
 }
 
-output "database_url" {
-  description = "Full PostgreSQL connection string (use for local debugging only)"
-  value       = "postgresql://postgres:${random_password.db_password.result}@${google_sql_database_instance.db.private_ip_address}:5432/profitpilot"
-  sensitive   = true
-}
-
 output "wif_provider" {
   description = "Workload Identity Provider — goes into the WIF_PROVIDER GitHub Secret"
   value       = google_iam_workload_identity_pool_provider.github_provider.name
