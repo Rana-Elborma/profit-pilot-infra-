@@ -18,14 +18,21 @@ echo "========================================"
 echo "  PROFIT PILOT — RESTORE"
 echo "========================================"
 echo ""
-echo "Step 1/5 — Provisioning infrastructure (Cloud SQL takes ~10 min)..."
+echo "Step 1/4 — Provisioning infrastructure..."
 echo ""
 
 cd "$TERRAFORM_DIR"
+
+# Firestore databases survive terraform destroy (GCP restriction).
+# Import it into state if it already exists so apply doesn't fail.
+if ! terraform state list 2>/dev/null | grep -q "google_firestore_database.default"; then
+  terraform import google_firestore_database.default "(default)" 2>/dev/null || true
+fi
+
 terraform apply -auto-approve
 
 echo ""
-echo "Step 2/5 — Reading outputs..."
+echo "Step 2/4 — Reading outputs..."
 
 PROJECT_ID=$(terraform output -raw gcp_project_id)
 REGION=$(terraform output -raw gcp_region)
@@ -44,7 +51,7 @@ echo "  wif_provider:      $WIF_PROVIDER"
 echo "  service_account:   $WIF_SA"
 
 echo ""
-echo "Step 3/5 — Updating GitHub Secrets on $SERVICES_REPO ..."
+echo "Step 3/4 — Updating GitHub Secrets on $SERVICES_REPO ..."
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
   gh secret set GCP_PROJECT_ID        --body "$PROJECT_ID"   --repo "$SERVICES_REPO"
@@ -70,7 +77,7 @@ else
 fi
 
 echo ""
-echo "Step 4/5 — Deploying application images via CI/CD..."
+echo "Step 4/4 — Deploying application images via CI/CD..."
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
   gh workflow run "Deploy core-api"      --repo "$SERVICES_REPO" --ref main
@@ -101,13 +108,6 @@ else
   echo "  Press Enter once both workflows are green..."
   read -r
 fi
-
-echo ""
-echo "Step 5/5 — Running database migrations..."
-gcloud run jobs execute run-migrations \
-  --region "$REGION" \
-  --wait
-echo "  Migrations complete."
 
 echo ""
 echo "========================================"
